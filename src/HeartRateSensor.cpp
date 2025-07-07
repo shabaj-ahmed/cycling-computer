@@ -1,4 +1,7 @@
 #include "HeartRateSensor.h"
+#include "DisplayManager.h"
+
+extern DisplayManager display;
 
 // Static instance for use in static callbacks
 HeartRateSensor* HeartRateSensor::instance = nullptr;
@@ -41,12 +44,31 @@ void HeartRateSensor::begin() {
   scanner->setInterval(45);
   scanner->setWindow(15);
   scanner->start(0, false);  // Non-blocking scan
+
+  // Create the heart rate task
+    xTaskCreatePinnedToCore(
+        heartRateTask,
+        "HeartRateTask",
+        4096,
+        this,
+        1,
+        nullptr,
+        1
+    );
+}
+
+void HeartRateSensor::heartRateTask(void* pvParameters) {
+    HeartRateSensor* self = static_cast<HeartRateSensor*>(pvParameters);
+    while (true) {
+        self->scanAndConnect();
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 }
 
 void HeartRateSensor::scanAndConnect() {
   // Reconnect if connection is lost
   if (client && !client->isConnected()) {
-    Serial.println("⚠️  Lost connection. Resetting client...");
+    Serial.println("Lost connection. Resetting client...");
     NimBLEDevice::deleteClient(client);
     client = nullptr;
     foundDevice = nullptr;
@@ -56,17 +78,17 @@ void HeartRateSensor::scanAndConnect() {
     NimBLEScan* scanner = NimBLEDevice::getScan();
     scanner->setScanCallbacks(scanCallbacks);  // already set, but safe
     scanner->start(0, false);  // restart non-blocking scan
-    Serial.println("🔄 Restarting BLE scan...");
+    Serial.println("Restarting BLE scan...");
     return;  // wait for scan to rediscover the device
   }
 
   if (!foundDevice || client) return;
 
   client = NimBLEDevice::createClient();
-  Serial.println("🔗 Connecting to Polar H10...");
+  Serial.println("Connecting to Polar H10...");
 
   if (!client->connect(foundDevice)) {
-    Serial.println("❌ Connection failed.");
+    Serial.println("Connection failed.");
     NimBLEDevice::deleteClient(client);
     client = nullptr;
     foundDevice = nullptr;
@@ -74,22 +96,22 @@ void HeartRateSensor::scanAndConnect() {
     return;
   }
 
-  Serial.println("✅ Connected to Polar H10!");
+  Serial.println("Connected to Polar H10!");
   connected = true;
 
   NimBLERemoteService* hrService = client->getService("180D");
   if (!hrService) {
-    Serial.println("⚠️  Heart Rate service not found.");
+    Serial.println("Heart Rate service not found.");
     return;
   }
 
   NimBLERemoteCharacteristic* hrChar = hrService->getCharacteristic("2A37");
   if (!hrChar || !hrChar->canNotify()) {
-    Serial.println("⚠️  HR characteristic not found or not notifiable.");
+    Serial.println("HR characteristic not found or not notifiable.");
     return;
   }
 
-  Serial.println("🔔 Subscribing to heart rate notifications...");
+  Serial.println("Subscribing to heart rate notifications...");
   hrChar->subscribe(true, onNotify);
 }
 
@@ -126,20 +148,16 @@ void HeartRateSensor::processHeartRateData(uint8_t* data, size_t length) {
   bool rrPresent = flags & 0x10;
   bpm = data[1];
 
-  Serial.print("❤️ Heart Rate: ");
-  Serial.println(bpm);
+  display.updateBPM(bpm);
 
   rrIntervals.clear();
   if (rrPresent) {
-    Serial.print("⏱️  R-R Intervals (ms): ");
     for (int i = 2; i + 1 < length; i += 2) {
       uint16_t rr = data[i] | (data[i + 1] << 8);
       float rr_ms = rr * 1000.0 / 1024.0;
       rrIntervals.push_back(rr_ms);
-      Serial.print(rr_ms, 2);
-      Serial.print("  ");
+      display.updateRR(rrIntervals);
     }
-    Serial.println();
   }
 }
 
@@ -150,12 +168,12 @@ void HeartRateSensor::processHeartRateData(uint8_t* data, size_t length) {
 HeartRateSensor::ScanCallbacks::ScanCallbacks(HeartRateSensor* parent) : parent(parent) {}
 
 void HeartRateSensor::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* device) {
-  Serial.print("🔍 Found device: ");
+  Serial.print("Found device: ");
   Serial.println(device->toString().c_str());
 
   if (device->getName().find("Polar") != std::string::npos ||
     device->isAdvertisingService(NimBLEUUID("180D"))) {
-    Serial.println("✅ Polar H10 Found!");
+    Serial.println("Polar H10 Found!");
     parent->foundDevice = const_cast<NimBLEAdvertisedDevice*>(device);
     NimBLEDevice::getScan()->stop();
   }

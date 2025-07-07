@@ -82,6 +82,8 @@ private:
         uint8_t* data, size_t length, bool isNotify
     );
 
+    static void heartRateTask(void* pvParameters);
+
     /**
      * @brief Parses heart rate and RR interval data from BLE.
      */
