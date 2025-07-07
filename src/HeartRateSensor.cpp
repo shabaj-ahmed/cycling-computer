@@ -1,5 +1,4 @@
 #include "HeartRateSensor.h"
-#include <Arduino.h>
 
 // Static instance for use in static callbacks
 HeartRateSensor* HeartRateSensor::instance = nullptr;
