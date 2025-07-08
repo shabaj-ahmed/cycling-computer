@@ -14,6 +14,7 @@
 
 #include <NimBLEDevice.h>
 #include <vector>
+#include "SystemEvent.h"
 
 /**
  * @brief Class to manage a BLE connection to a Polar H10 Heart Rate Sensor.
@@ -36,7 +37,7 @@ public:
     /**
      * @brief Starts BLE scanning. Call once during setup.
      */
-    void begin();
+    void begin(QueueHandle_t queue);
 
     /**
      * @brief Attempts to connect and subscribe to Polar H10 heart rate data.
@@ -61,6 +62,8 @@ public:
     bool isConnected() const;
 
 private:
+    QueueHandle_t eventQueue;
+    
     // BLE objects and heart rate data
     float bpm;
     bool connected;

@@ -6,7 +6,9 @@ DisplayManager::DisplayManager() : latestBPM(0.0f) {
     latestRR.reserve(4);  // Expecting max ~2 R-R values typically
 }
 
-void DisplayManager::begin() {
+void DisplayManager::begin(QueueHandle_t queue) {
+    this->eventQueue = queue;
+
     M5.begin();
     M5.Display.setTextColor(TFT_WHITE);
     M5.Display.setTextSize(2);
@@ -52,16 +54,44 @@ void DisplayManager::updateRR(const std::vector<float>& rrIntervals) {
 void DisplayManager::displayTask(void* pvParameters) {
     DisplayManager* self = static_cast<DisplayManager*>(pvParameters);
 
+    String eventMessage = "";
+    unsigned long messageTimestamp = 0;
+
+    float bpmCopy = 0.0f;
+    std::vector<float> rrCopy;
+
     while (true) {
-        float bpmCopy = 0.0f;
-        std::vector<float> rrCopy;
-
-        if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            bpmCopy = self->latestBPM;
-            rrCopy = self->latestRR;
-            xSemaphoreGive(dataMutex);
+        SystemEvent evt;
+        while (xQueueReceive(self->eventQueue, &evt, 0) == pdTRUE) {
+            switch (evt.type) {
+                case EventType::StartRecording:
+                    eventMessage = "Recording";
+                    break;
+                case EventType::StopRecording:
+                    eventMessage = "Stopped";
+                    break;
+                case EventType::ToggleLayout:
+                    eventMessage = "Layout";
+                    break;
+                case EventType::HeartRateUpdate:
+                    if (evt.floatValue >= 0) {
+                        self->updateBPM(evt.floatValue);
+                        bpmCopy = self->latestBPM;
+                    }
+                    break;
+                case EventType::RRIntervalUpdate:
+                    if (evt.floatValue >= 0) {
+                        rrCopy.clear();
+                        rrCopy.push_back(evt.floatValue);
+                        self->updateRR(rrCopy);
+                    }
+                    break;
+                default:
+                    eventMessage = "";
+            }
+            messageTimestamp = millis();
         }
-
+        
         M5.Display.clear();
         M5.Display.setCursor(0, 0);
         M5.Display.printf("BPM: %.1f\n", bpmCopy);
@@ -70,6 +100,12 @@ void DisplayManager::displayTask(void* pvParameters) {
             M5.Display.printf("%.1f ", val);
         }
 
-        vTaskDelay(pdMS_TO_TICKS(1000));  // Refresh every 1 second
+        // Show event message if within 2 seconds
+        if (millis() - messageTimestamp < 2000 && eventMessage.length() > 0) {
+            M5.Display.setCursor(0, 100);
+            M5.Display.print(eventMessage);
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(1000));  // Refresh every second
     }
 }

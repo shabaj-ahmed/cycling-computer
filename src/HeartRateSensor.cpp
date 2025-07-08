@@ -1,7 +1,8 @@
 #include "HeartRateSensor.h"
-#include "DisplayManager.h"
+#include "SystemEvent.h"
 
-extern DisplayManager display;
+// extern DisplayManager display;
+SystemEvent event = { EventType::HeartRateUpdate };
 
 // Static instance for use in static callbacks
 HeartRateSensor* HeartRateSensor::instance = nullptr;
@@ -32,7 +33,9 @@ HeartRateSensor::~HeartRateSensor() {
 // Public Methods
 // -----------------------------
 
-void HeartRateSensor::begin() {
+void HeartRateSensor::begin(QueueHandle_t queue) {
+  this->eventQueue = queue;
+  
   instance = this;
 
   NimBLEDevice::init("");  // Initialize BLE
@@ -148,7 +151,11 @@ void HeartRateSensor::processHeartRateData(uint8_t* data, size_t length) {
   bool rrPresent = flags & 0x10;
   bpm = data[1];
 
-  display.updateBPM(bpm);
+  // Send BPM event
+  SystemEvent bpmEvent;
+  bpmEvent.type = EventType::HeartRateUpdate;
+  bpmEvent.floatValue = bpm;
+  xQueueSend(eventQueue, &bpmEvent, 0);
 
   rrIntervals.clear();
   if (rrPresent) {
@@ -156,7 +163,11 @@ void HeartRateSensor::processHeartRateData(uint8_t* data, size_t length) {
       uint16_t rr = data[i] | (data[i + 1] << 8);
       float rr_ms = rr * 1000.0 / 1024.0;
       rrIntervals.push_back(rr_ms);
-      display.updateRR(rrIntervals);
+      // Send separate event for RR intervals
+      SystemEvent rrEvent;
+      rrEvent.type = EventType::RRIntervalUpdate;  // Same type (you could make a new one if needed)
+      rrEvent.floatValue = rr_ms;
+      xQueueSend(eventQueue, &rrEvent, 0);
     }
   }
 }
