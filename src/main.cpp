@@ -1,10 +1,12 @@
 #include "M5Unified.h"
 #include "HeartRateSensor.h"
 #include "DisplayManager.h"
+#include "ButtonManager.h"
 #include "SystemEvent.h"
 
 HeartRateSensor heartRate;
 DisplayManager displayManager;
+ButtonManager buttonManager;
 
 QueueHandle_t eventQueue;
 
@@ -20,6 +22,7 @@ void setup() {
     }
 
     heartRate.begin(eventQueue);
+    buttonManager.begin(eventQueue);
     displayManager.begin(eventQueue);
 }
 
