@@ -1,18 +1,18 @@
 # Project overview
-This project is a modular, open-source cycling computer designed for riders who want to monitor and log performance without relying on smartphone. The device is built to operate reliably in outdoor environments while remaining hackable and extensible for developers.
+This project is a open-source cycling computer designed for riders who want to monitor and log performance without relying on smartphone. The device is built to operate reliably in outdoor environments while remaining hackable and extensible for developers.
 
-The system is built around the ESP32-S3 platform and uses FreeRTOS to manage concurrent tasks such as sensor data acquisition, display updates, and SD card logging. It integrates:
+The system is built around M5 StackC Plus2 (ESP32-S3) platform and uses FreeRTOS to manage concurrent tasks such as sensor data acquisition, display updates, and SD card logging. It integrates:
  * BLE heart rate monitoring (Polar H10),
  * GPS-based tracking,
  * Speed and cadence sensors (Hall effect),
  * IMU for elevation and motion data.
 
-All collected data is logged to an SD card for post-ride analysis. The UI is operated via physical buttons, and the system is designed for fully offline use, with automatic sensor reconnection to ensure robustness during rides.
+The system is structured using FreeRTOS for task scheduling and inter-component communication. All collected data is logged to an SD card for post-ride analysis. The UI is operated via physical buttons, and the system is designed for fully offline use, with automatic sensor reconnection to ensure robustness during rides.
 
 # System Requirements
 This section outlines the design requirements for the cycling computer, focusing on what users need from the system and how the system should behave. It is divided into three parts: user requirements that describe the goals from the user's perspective, functional requirements that specify what the system shall do, and non-functional requirements that define the quality attributes of the system.
 
-##User Requirement
+## User Requirement
 1. Core Functionality
   * UR1: As a user, I want the device to display real-time cycling data, including speed, cadence, heart rate, distance, and elevation.
   * UR2: As a user, I want the device to record GPS data so I can view my travelled route later.
@@ -94,23 +94,65 @@ This section outlines the design requirements for the cycling computer, focusing
 
 # Software Architecture
 
-## HeartRateSensor Module
+## Design Principles
+To ensure modularity and scalability, this project is structured around a few guiding principles:
+- Component-based structure: Each hardware interface (sensor or actuator) is encapsulated as a separate component class. Examples include BLE heart rate sensors, speed/cadence sensors, GPS, IMU, display, buttons…
+- Task-per-component model: Every component manages its timing and internal state by running its own FreeRTOS task, allowing it to operate independently without blocking the rest of the system.
+- Begin() pattern for initialisation: For consistency, each component provides a `begin(QueueHandle_t queue)` method. This method sets up hardware resources, starts internal tasks, and registers communication queues.
+- Event-driven communication: Components do not directly call each other's functions. Instead, they send structured messages (`SystemEvent`) through a shared FreeRTOS queue, promoting loose coupling and reusability.
+- Thread safety: Shared data (e.g., values displayed on screen) is protected using mutexes (mutual exclusion locks), preventing race conditions when multiple tasks access the same resource.
 
-This module manages communication with a Polar H10 heart rate monitor using BLE via the NimBLE library.
+## General Execution Flow
+The following sequence describes how the system initialises, how components operate concurrently, and how they communicate through events.
+1. System startup:
+   - In `setup()`, a global event queue is created using `xQueueCreate()`.
+   - Each component's `begin(queue)` method is invoked.
+     - Perform hardware setup
+     - Create internal FreeRTOS tasks using `xTaskCreatePinnedToCore()`
+     - Registers the queue for inter-component communication.
+2. Component lifecycle:
+   - Each component runs independently in its own task:
+     - Sensors (e.g., heart rate, speed, IMU) periodically poll or receive data and push events into the queue.
+     - Actuator elements (display, buzzer or storage) listen to the event queue and react to incoming messages.
+3. Event flow:
+   - `SystemEvent` structs define the communication contract between components
+   - For example,
+     - When a new heart rate is received, the HeartRateSensor component sends a `HeartRateUpdate` event
+     - The DisplayManager, which continuously polls the queue, reads this event and updates the screen accordingly
+4. Thread-safe updates:
+   - If a component (like DisplayManager) uses shared internal variables (e.g., `latestBPM`), access is controlled using mutexes (`xSemaphoreCreateMutex()`), ensuring data consistency across tasks.
+This architecture avoids blocking operations and scales cleanly with the addition of new components.
 
-### Responsibilities
-- Scan for BLE devices and identify Polar H10
-- Connect and subscribe to heart rate notifications
-- Extract BPM and RR intervals from notifications
-- Handle automatic reconnection when disconnected
-- Provide access to the latest data via getter methods
+## FreeRTOS Usage and Justification
+To manage multiple sensors and interactions in parallel, the system relies on FreeRTOS. Here's a breakdown of the main FreeRTOS features used in this project:
+### Tasks (One Task per Component)
+Each component (heart rate sensor, display, buttons, etc.) is assigned a dedicated FreeRTOS task. This:
+- Let's each module run at its own frequency (e.g. BLE scan rate vs. display refresh frequency).
+- Avoids blocking, e.g. if BLE is reconnecting, the rest of the system stays responsive.
+- Keeps the code modular as each component owns its behaviour.
+Additional benefits:
+- Pinned core execution (`xTaskCreatePinnedToCore`): Tasks are pinned to either core 0 or 1, enabling balanced scheduling on ESP32’s dual-core architecture.
+- Non-blocking behaviour: All components use `vTaskDelay()` instead of `delay()`, allowing the FreeRTOS scheduler to run other tasks while one is waiting.
 
-### Used in
-- Cycling computer project (with GPS, cadence, display, SD card logger)
+### Queues (Decoupled Communication Between Components)
+A single `QueueHandle_t eventQueue` is shared across all components. Sensors push events, and consumers like the DisplayManager listen for and act on them. This:
+- Keeps components loosely coupled (no direct function calls between modules), avoiding fragile dependencies.
+- Supports clean and readable code for inter-component communication.
+Example:
+```
+SystemEvent evt = { EventType::HeartRateUpdate };
+evt.floatValue = bpm;
+xQueueSend(eventQueue, &evt, 0);
+```
+### Mutexes – Thread-Safe Shared Data
+To safely update shared data (e.g., `latestBPM` in `DisplayManager`) across tasks, access is wrapped in a mutex to prevent simultaneous modifications by multiple tasks, ensuring that components have access to complete data.
+Example:
 
-### Dependencies
-- NimBLE-Arduino (BLE library)
-- FreeRTOS (task scheduling on ESP32)
+```
+xSemaphoreTake(dataMutex, pdMS_TO_TICKS(10));
+latestBPM = bpm;
+xSemaphoreGive(dataMutex);
+```
 
 ### Author
 Shabaj Ahmed, July 2025
