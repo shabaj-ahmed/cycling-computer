@@ -3,13 +3,16 @@
 #include "DisplayManager.h"
 #include "ButtonManager.h"
 #include "SystemEvent.h"
+#include "BuzzerManager.h"
 
 HeartRateSensor heartRate;
 DisplayManager displayManager;
 ButtonManager buttonManager;
+BuzzerManager buzzerManager;
 
 QueueHandle_t eventQueue;
 QueueHandle_t displayQueue;
+QueueHandle_t buzzerQueue;
 
 void dispatcherTask(void* pvParameters) {
     SystemEvent evt;
@@ -18,7 +21,8 @@ void dispatcherTask(void* pvParameters) {
 
             if (evt.target == EventTarget::Display || evt.target == EventTarget::All)
                 {xQueueSend(displayQueue, &evt, 0);}
-
+            if (evt.target == EventTarget::Buzzer || evt.target == EventTarget::All)
+                {xQueueSend(buzzerQueue, &evt, 0);}
         }
     }
 }
@@ -30,6 +34,7 @@ void setup() {
     M5.begin();
     eventQueue   = xQueueCreate(20, sizeof(SystemEvent));
     displayQueue = xQueueCreate(10, sizeof(SystemEvent));
+    buzzerQueue  = xQueueCreate(10, sizeof(SystemEvent));
 
     if (!eventQueue) {
         Serial.println("Failed to create event queue!");
@@ -39,6 +44,7 @@ void setup() {
     heartRate.begin(eventQueue);
     buttonManager.begin(eventQueue);
     displayManager.begin(displayQueue);
+    buzzerManager.begin(buzzerQueue);
 
     xTaskCreatePinnedToCore(
         dispatcherTask,

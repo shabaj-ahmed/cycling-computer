@@ -8,7 +8,7 @@ void ButtonManager::begin(QueueHandle_t queue) {
     xTaskCreatePinnedToCore(
         buttonTask,
         "ButtonTask",
-        4096,
+        2048,
         this,
         1,
         nullptr,
@@ -31,8 +31,17 @@ void ButtonManager::buttonTask(void* pvParameters) {
 
         // --------- Button A (Toggle Layout) ----------
         if (isPressedA && !wasPressedA) {
-            SystemEvent evt = { EventType::ToggleLayout };
-            xQueueSend(self->eventQueue, &evt, portMAX_DELAY);
+            SystemEvent layoutEvent = {
+                .type = EventType::ToggleLayout,
+                .target = EventTarget::Display
+            };
+            xQueueSend(self->eventQueue, &layoutEvent, portMAX_DELAY);
+
+            SystemEvent buzzerEvent = {
+                .type = EventType::BuzzerToneToggleLayout,
+                .target = EventTarget::Buzzer
+            };
+            xQueueSend(self->eventQueue, &buzzerEvent, portMAX_DELAY);
         }
         wasPressedA = isPressedA;
 
@@ -41,10 +50,31 @@ void ButtonManager::buttonTask(void* pvParameters) {
             pressStartTime = millis();
         } else if (!isPressedB && wasPressedB) {
             unsigned long pressDuration = millis() - pressStartTime;
-            SystemEvent evt = {
-                pressDuration > 1500 ? EventType::StopRecording : EventType::StartRecording
-            };
-            xQueueSend(self->eventQueue, &evt, portMAX_DELAY);
+            if (pressDuration > 1500) {
+                SystemEvent stopEvent = {
+                    .type = EventType::StopRecording,
+                    .target = EventTarget::Display
+                };
+                xQueueSend(self->eventQueue, &stopEvent, portMAX_DELAY);
+
+                SystemEvent buzzerEvent = {
+                    .type = EventType::BuzzerToneStopRecording,
+                    .target = EventTarget::Buzzer
+                };
+                xQueueSend(self->eventQueue, &buzzerEvent, portMAX_DELAY);
+            } else {
+                SystemEvent startEvent = {
+                    .type = EventType::StartRecording,
+                    .target = EventTarget::Display
+                };
+                xQueueSend(self->eventQueue, &startEvent, portMAX_DELAY);
+
+                SystemEvent buzzerEvent = {
+                    .type = EventType::BuzzerToneStartRecording,
+                    .target = EventTarget::Buzzer
+                };
+                xQueueSend(self->eventQueue, &buzzerEvent, portMAX_DELAY);
+            }
         }
         wasPressedB = isPressedB;
 
