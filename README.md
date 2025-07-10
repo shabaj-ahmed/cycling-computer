@@ -123,6 +123,35 @@ The following sequence describes how the system initialises, how components oper
    - If a component (like DisplayManager) uses shared internal variables (e.g., `latestBPM`), access is controlled using mutexes (`xSemaphoreCreateMutex()`), ensuring data consistency across tasks.
 This architecture avoids blocking operations and scales cleanly with the addition of new components.
 
+## Event-Driven Messaging with FreeRTOS Queues
+To enable robust and scalable communication between system components, this projec uses a centralised event dispatcher architecture to handle communication between producers (e.g., sensors) and consumers (e.g., display, buzzer). This design ensures:
+* Asynchronous and non-blocking interaction between tasks,
+* Decoupled communication between components,
+* Race-free message handling with deterministic behaviour.
+
+### Dispatcher architecture overview
+This project uses a central dispatcher queue, which acts as a message bus. All producers send events to this shared queue. A dedicated `DispatcherTask` reads from it and routes events to their respective consumer queues based on a `target` field in the event.
+
+Each consumer (e.g., `DisplayManager`, `BuzzerManager`) has its own private queue and only processes the events intended for it. This ensures clean decoupling and predictable event flow without the risk of messages being consumed by the wrong task.
+
+Below is a high-level diagram showing the flow of events through the system.
+1. Producers (Top) publish to the `dispatcher queue`,
+2. The `DispatcherTask` reads the `dispatcher queue`
+3. For each event, the `DispatcherTask` forwards messages to the `target` consumer queues (Bottom).
+4. Consumer components process only the events in their queue
+
+[Dispatcher architecture diagram](https://github.com/shabaj-ahmed/cycling-computer/tree/main/assets/dispatcher_architecture.jpg)
+
+### Design Rationale
+#### Avoid Race Conditions and Message Loss
+FreeRTOS queues are single-consumer by design, if multiple tasks call `xQueueReceive()` on the same queue, only one gets the message. This architecture ensures only the dispatcher reads from the shared queue, preventing accidental message loss.
+
+#### Decoupling
+Components do not need to know who consumes their messages. Routing is handled centrally, making the system modular and easier to extend.
+
+#### Deterministic Behavior
+The FIFO nature of FreeRTOS queues is preserved. With only one task reading the shared queue, event routing becomes deterministic and easier to debug.
+
 ## FreeRTOS Usage and Justification
 To manage multiple sensors and interactions in parallel, the system relies on FreeRTOS. Here's a breakdown of the main FreeRTOS features used in this project:
 ### Tasks (One Task per Component)
