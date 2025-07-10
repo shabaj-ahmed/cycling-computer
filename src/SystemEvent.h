@@ -14,10 +14,20 @@ enum class EventType {
     CadenceDisconnected,
     SpeedUpdate,
     SpeedDisconnected,
+    BuzzerToneStartRecording,
+    BuzzerToneStopRecording,
+    BuzzerToneToggleLayout,
+};
+
+enum class EventTarget {
+    Display,
+    Buzzer,
+    All
 };
 
 struct SystemEvent {
     EventType type;
+    EventTarget target;
     union {
         float floatValue;  // For heart rate, speed, etc.
         bool boolValue;    // For recording, connection, etc.
