@@ -4,11 +4,13 @@
 #include "ButtonManager.h"
 #include "SystemEvent.h"
 #include "BuzzerManager.h"
+#include "RtcManager.h"
 
 HeartRateSensor heartRate;
 DisplayManager displayManager;
 ButtonManager buttonManager;
 BuzzerManager buzzerManager;
+RtcManager rtcManager;
 
 QueueHandle_t eventQueue;
 QueueHandle_t displayQueue;
@@ -25,6 +27,8 @@ void dispatcherTask(void* pvParameters) {
                 {xQueueSend(buzzerQueue, &evt, 0);}
         }
     }
+
+    vTaskDelay(pdMS_TO_TICKS(10));  // Prevent task starvation
 }
 
 void setup() {
@@ -33,7 +37,7 @@ void setup() {
 
     M5.begin();
     eventQueue   = xQueueCreate(20, sizeof(SystemEvent));
-    displayQueue = xQueueCreate(10, sizeof(SystemEvent));
+    displayQueue = xQueueCreate(30, sizeof(SystemEvent));
     buzzerQueue  = xQueueCreate(10, sizeof(SystemEvent));
 
     if (!eventQueue) {
@@ -45,6 +49,7 @@ void setup() {
     buttonManager.begin(eventQueue);
     displayManager.begin(displayQueue);
     buzzerManager.begin(buzzerQueue);
+    rtcManager.begin(eventQueue);
 
     xTaskCreatePinnedToCore(
         dispatcherTask,
@@ -57,6 +62,4 @@ void setup() {
     );
 }
 
-void loop() {
-
-}
+void loop() {}

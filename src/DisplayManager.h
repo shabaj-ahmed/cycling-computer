@@ -31,6 +31,11 @@ private:
     float latestBPM;
     float lastBPM = 0.0f;
     float latestRR;
+    int hour = -1;
+    int lastHour = -1;
+    bool colonVisible = true;
+    int minute = 0;
+    int lastMinute = 0;
 
     // Mutex to safely access cached data across tasks
     static SemaphoreHandle_t dataMutex;

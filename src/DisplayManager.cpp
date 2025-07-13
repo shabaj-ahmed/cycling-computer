@@ -80,6 +80,20 @@ void DisplayManager::displayTask(void* pvParameters) {
                         self->updateRR(evt.floatValue);
                     }
                     break;
+                case EventType::RtcHourUpdate:
+                    if (xSemaphoreTake(self->dataMutex, pdMS_TO_TICKS(10))
+                        == pdTRUE) {
+                        self->hour = static_cast<int>(evt.floatValue);
+                        xSemaphoreGive(self->dataMutex);
+                    }
+                    break;
+                case EventType::RtcMinuteUpdate:
+                    if (xSemaphoreTake(self->dataMutex, pdMS_TO_TICKS(10))
+                        == pdTRUE) {
+                        self->minute = static_cast<int>(evt.floatValue);
+                        xSemaphoreGive(self->dataMutex);
+                    }
+                    break;
             }
         }
 
@@ -105,8 +119,40 @@ void DisplayManager::drawDefaultLayout() {
 
     // 1. Time & recording dot (Row 1)
     M5.Display.setTextSize(3);
-    M5.Display.setCursor(10, 10);  // Top-left
-    M5.Display.printf("01:26");
+    // --- TIME DRAWING ---
+    // Flash colon: toggle every second
+    colonVisible = !colonVisible;
+
+    // Only update hour if changed
+    if (hour != lastHour) {
+        M5.Display.fillRect(10, 10, 40, 25, TFT_BLACK);  // Clear hour region
+        M5.Display.setCursor(10, 10);
+        M5.Display.printf("%02d", hour);
+        lastHour = hour;
+    }
+
+    // Always update colon
+    M5.Display.fillRect(45, 10, 15, 25, TFT_BLACK);  // Clear colon area
+    M5.Display.setCursor(45, 10);
+    M5.Display.print(colonVisible ? ":" : " ");
+
+    // Only update minute if changed
+    if (minute != lastMinute) {
+        M5.Display.fillRect(60, 10, 40, 25, TFT_BLACK);  // Clear minute region
+        M5.Display.setCursor(60, 10);
+        M5.Display.printf("%02d", minute);
+        lastMinute = minute;
+    }
+
+    // --- RECORDING DOT ---
+    if (isRecording != lastRecording) {
+        if (isRecording)
+            M5.Display.fillCircle(120, 20, 8, TFT_RED);
+        else
+            M5.Display.fillCircle(120, 20, 8, TFT_BLACK);
+        lastRecording = isRecording;
+    }
+
     if (isRecording != lastRecording) {
         if (isRecording) {
             M5.Display.fillCircle(115, 20, 8, TFT_RED);

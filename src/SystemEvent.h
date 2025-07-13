@@ -17,6 +17,8 @@ enum class EventType {
     BuzzerToneStartRecording,
     BuzzerToneStopRecording,
     BuzzerToneToggleLayout,
+    RtcHourUpdate,
+    RtcMinuteUpdate,
 };
 
 enum class EventTarget {
