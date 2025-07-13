@@ -5,21 +5,32 @@
 #include <M5Unified.h>
 #include "SystemEvent.h"
 
+enum class DisplayLayout {
+    Default,
+    // Add more layouts later
+};
+
 class DisplayManager {
 public:
     DisplayManager();
     void begin(QueueHandle_t queue);
 
     void updateBPM(float bpm);
-    void updateRR(const std::vector<float>& rrIntervals);
+    void updateRR(float rrIntervals);
 
 private:
     static void displayTask(void* pvParameters);  // FreeRTOS task
     QueueHandle_t eventQueue;
 
+    DisplayLayout currentLayout = DisplayLayout::Default;
+    bool isRecording = false;
+    bool lastRecording = false;
+    void drawDefaultLayout();
+
     // Cached values
     float latestBPM;
-    std::vector<float> latestRR;
+    float lastBPM = 0.0f;
+    float latestRR;
 
     // Mutex to safely access cached data across tasks
     static SemaphoreHandle_t dataMutex;
